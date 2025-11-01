@@ -1,0 +1,21 @@
+{
+  "name": "projet3",
+  "version": "1.0.0",
+  "scripts": {
+    "start:gateway": "node gateway/index.js",
+    "start:lamp": "node lamp/app.js",
+    "start:thermostat": "node thermostat/app.js",
+    "start:motion": "node motion/app.js",
+    "dev": "concurrently \"npm run start:gateway\" \"npm run start:lamp\" \"npm run start:thermostat\" \"npm run start:motion\""
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.7.2",
+    "mongoose": "^7.5.0",
+    "cors": "^2.8.5",
+    "concurrently": "^8.2.0",
+    "crypto": "^1.0.1",
+    "bcrypt": "^5.1.0",
+    "uuid": "^9.0.0"
+  }
+}
