@@ -113,11 +113,17 @@ function renderThings(things) {
 
     Object.values(unique).forEach(async t => {
         try {
-            const res = await fetch(`${t.endpoint}/properties`);
+            const res = await fetch(`http://localhost:3000/things/${t.id}/properties`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+            if (!res.ok) throw new Error('Unauthorized or server error');
             const props = await res.json();
-            renderProperties(t.id, t.type, props);
+            renderProperties(t.id, t.type, props.properties);
         } catch (err) {
             console.error(`Failed to fetch properties for ${t.name}:`, err);
+            $(`props-${t.id}`).innerHTML = '<span class="error">Unauthorized or offline</span>';
         }
     });
 }

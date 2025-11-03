@@ -17,15 +17,38 @@ connectDB();
 
 const things = new Map();
 
-app.get('/things', async (req, res) => {
+const authenticateToken = async (req, res, next) => {
     const token = req.headers.authorization?.split(' ')[1];
     if (!token || !(await UserService.validateToken(token))) {
-        return res.status(401).json({ error: 'Invalid token' });
+        return res.status(401).json({ error: 'Invalid or missing token' });
     }
+    req.token = token;
+    next();
+};
+
+const isLocalRequest = (req, res, next) => {
+    const ip = req.socket.remoteAddress;
+    if (ip !== '127.0.0.1' && ip !== '::1' && ip !== '::ffff:127.0.0.1') {
+        return res.status(403).json({ error: 'Access denied: Internal service only' });
+    }
+    next();
+};
+
+app.post('/validate-token', async (req, res) => {
+    const { token } = req.body;
+    if (!token) {
+        return res.status(400).json({ valid: false });
+    }
+
+    const isValid = await UserService.validateToken(token);
+    res.json({ valid: isValid });
+});
+
+app.get('/things', authenticateToken, async (req, res) => {
     res.json(Array.from(things.values()));
 });
 
-app.post('/register', async (req, res) => {
+app.post('/things', isLocalRequest, async (req, res) => {
     const { name, type, endpoint } = req.body;
     const id = `${type}-${Date.now()}`;
 
@@ -55,16 +78,12 @@ app.post('/login', async (req, res) => {
     }
 });
 
-app.get('/analytics', async (req, res) => {
-    const token = req.headers.authorization?.split(' ')[1];
-    if (!token || !(await UserService.validateToken(token))) {
-        return res.status(401).json({ error: 'Invalid token' });
-    }
+app.get('/analytics', authenticateToken, async (req, res) => {
     const events = await EventService.getUserEvents();
     res.json(events);
 });
 
-app.post('/event', async (req, res) => {
+app.post('/event', isLocalRequest, async (req, res) => {
     const { thingId, thingType, type, data } = req.body;
     if (!thingId || !type) return res.status(400).json({ error: 'Missing fields' });
 
@@ -85,6 +104,41 @@ app.post('/things/:id/updated', async (req, res) => {
     io.emit('thing:updated', { thingId, type, properties });
 
     res.json({ success: true });
+});
+
+// AJOUTE ÇA DANS index.js (juste après les autres routes)
+
+app.get('/things/:id/properties', authenticateToken, async (req, res) => {
+    const thingId = req.params.id;
+    const thing = things.get(thingId);
+
+    if (!thing) {
+        return res.status(404).json({ error: 'Thing not found' });
+    }
+
+    try {
+        const response = await fetch(`${thing.endpoint}/properties`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${req.token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (!response.ok) {
+            const error = await response.text();
+            return res.status(response.status).json({
+                error: 'Failed to fetch properties',
+                details: error
+            });
+        }
+
+        const properties = await response.json();
+        res.json({ thingId, type: thing.type, properties });
+    } catch (err) {
+        console.error(`Gateway failed to proxy properties for ${thingId}:`, err);
+        res.status(502).json({ error: 'Service unavailable' });
+    }
 });
 
 io.on('connection', async (socket) => {
@@ -116,7 +170,10 @@ io.on('connection', async (socket) => {
             console.log(`Triggering action ${data.action} on thing ${data.thingId}`);
             fetch(`${thing.endpoint}/actions/${data.action}`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${data.token}`
+                },
                 body: JSON.stringify(data.params)
             }).catch(() => {
                 console.error(`Failed to trigger action ${data.action} on thing ${data.thingId}`);

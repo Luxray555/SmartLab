@@ -15,17 +15,10 @@ class Thing {
         if (!(key in this.properties)) throw new Error(`Property ${key} does not exist`);
         this.properties[key] = value;
 
-        const EventService = require('../services/EventService');
-
-        // Log avec toutes les propriétés
-        EventService.log(this.id, this.type, 'propertyChanged', { properties: this.properties })
-            .catch(() => {});
-
         fetch(`http://localhost:3000/things/${this.id}/updated`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
-                // Note: pas de token ici car Thing n'a pas de token utilisateur
             },
             body: JSON.stringify({
                 thingId: this.id,
@@ -58,7 +51,9 @@ class Thing {
 
         fetch('http://localhost:3000/event', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json'
+            },
             body: JSON.stringify({ thingId: this.id, thingType: this.type, type: event, data })
         }).catch(() => {});
     }
@@ -66,9 +61,11 @@ class Thing {
     async register(maxRetries = 10, delay = 1000) {
         for (let i = 0; i < maxRetries; i++) {
             try {
-                const res = await fetch('http://localhost:3000/register', {
+                const res = await fetch('http://localhost:3000/things', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
                     body: JSON.stringify({ name: this.name, type: this.type, endpoint: this.endpoint })
                 });
                 const data = await res.json();
@@ -80,17 +77,6 @@ class Thing {
             }
         }
         throw new Error('Failed to register');
-    }
-
-    toTD() {
-        return {
-            id: this.id, name: this.name, type: this.type, endpoint: this.endpoint,
-            properties: Object.keys(this.properties).reduce((acc, k) => {
-                acc[k] = { type: typeof this.properties[k], writable: true };
-                return acc;
-            }, {}),
-            actions: Object.keys(this.actions)
-        };
     }
 }
 
