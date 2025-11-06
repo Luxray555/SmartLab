@@ -165,8 +165,7 @@ function renderThings(things) {
             <button onclick="Thing.action('${t.id}', 'simulateMotion')">Simulate Motion</button>
           ` : ''}
           ${t.type === 'thermostat' ? `
-            <button onclick="Thing.action('${t.id}', 'turnOn')">Turn On</button>
-            <button onclick="Thing.action('${t.id}', 'turnOff')">Turn Off</button>
+            <button onclick="Thing.action('${t.id}', 'setMode', {mode: 'manual'})">Manual Mode</button>
             <button onclick="Thing.action('${t.id}', 'setMode', {mode: 'eco'})">Eco Mode</button>
             <button onclick="Thing.action('${t.id}', 'setMode', {mode: 'comfort'})">Comfort Mode</button>
           ` : ''}
@@ -198,7 +197,15 @@ function renderProperties(thingId, thingType, properties) {
     const el = document.getElementById(`props-${thingId}`);
     if (!el) return;
 
-    const readOnlyNumbers = ['currentTemperature', 'targetTemperature'];
+    const readOnlyNumbers = ['currentTemperature'];
+
+    const colorMap = {
+        'white': '#ffffff',
+        'red': '#f44336',
+        'blue': '#2196f3',
+        'green': '#4caf50',
+        'yellow': '#ffeb3b'
+    };
 
     const propertyInputs = Object.entries(properties).map(([key, value]) => {
         const inputType = typeof value === 'boolean' ? 'checkbox' :
@@ -208,7 +215,6 @@ function renderProperties(thingId, thingType, properties) {
 
         const isNumberReadonly = inputType === 'number' && readOnlyNumbers.includes(key);
 
-        // IDs pour le slider et sa valeur textuelle
         const sliderId = `${thingId}-${key}-slider`;
         const valueId = `${thingId}-${key}-value`;
 
@@ -222,7 +228,6 @@ function renderProperties(thingId, thingType, properties) {
                            ${inputValue}
                            disabled>
                 `
-            // NOUVEAU : Logique spécifique pour le slider "brightness"
             : key === 'brightness' ? `
                     <div class="slider-wrapper">
                         <input type="range"
@@ -232,17 +237,34 @@ function renderProperties(thingId, thingType, properties) {
                                step="1"
                                ${inputValue}
                                oninput="document.getElementById('${valueId}').textContent = this.value"
-                               onchange="Thing.updateProperty('${thingId}', '${key}', parseFloat(this.value), '${thingType}')">
+                               onchange="Thing.updateProperty('${thingId}', '${key}', parseFloat(this.value), '${thingType}')"
+                               style="background: linear-gradient(to right, #263238, ${colorMap[properties.color] || '#ffeb3b'});"
+                        >
                         <span id="${valueId}" class="slider-value">${value}</span>
                     </div>
                 `
-                // FIN NOUVEAU
                 : inputType === 'number' ? `
+                    ${key === 'targetTemperature' ? `
+                        <div class="slider-wrapper">
+                            <input type="range"
+                                   id="${sliderId}"
+                                   min="10"
+                                   max="30"
+                                   step="0.5"
+                                   ${inputValue}
+                                   ${properties.mode !== 'manual' ? 'disabled' : ''} 
+                                   style="background: linear-gradient(to right, #2196f3, #ffeb3b, #ff9800, #f44336);"
+                                   oninput="document.getElementById('${valueId}').textContent = this.value"
+                                   onchange="Thing.updateProperty('${thingId}', '${key}', parseFloat(this.value), '${thingType}')">
+                            <span id="${valueId}" class="slider-value">${value}</span>
+                        </div>
+                    ` : `
                     <input type="number" 
-                           id="${thingId}-${key}" 
-                           ${inputValue}
-                           step="0.1"
-                           ${isNumberReadonly ? 'readonly' : `onchange="Thing.updateProperty('${thingId}', '${key}', parseFloat(this.value), '${thingType}')"`}>
+                               id="${thingId}-${key}" 
+                               ${inputValue}
+                               step="0.1"
+                               ${isNumberReadonly ? 'readonly' : `onchange="Thing.updateProperty('${thingId}', '${key}', parseFloat(this.value), '${thingType}')"`}>
+                    `}
                 ` : key === 'color' ? `
                     <select id="${thingId}-${key}" 
                             onchange="Thing.updateProperty('${thingId}', '${key}', this.value, '${thingType}')">
@@ -255,7 +277,7 @@ function renderProperties(thingId, thingType, properties) {
                 ` : key === 'mode' ? `
                     <select id="${thingId}-${key}" 
                             onchange="Thing.updateProperty('${thingId}', '${key}', this.value, '${thingType}')">
-                        <option value="off" ${value === 'off' ? 'selected' : ''}>Off</option>
+                        <option value="manual" ${value === 'manual' ? 'selected' : ''}>Manual</option>
                         <option value="eco" ${value === 'eco' ? 'selected' : ''}>Eco</option>
                         <option value="comfort" ${value === 'comfort' ? 'selected' : ''}>Comfort</option>
                     </select>
@@ -310,11 +332,18 @@ const Thing = {
 
 function updateThing(data) {
     if (data.properties) {
+        const colorMap = {
+            'white': '#ffffff',
+            'red': '#f44336',
+            'blue': '#2196f3',
+            'green': '#4caf50',
+            'yellow': '#ffeb3b'
+        };
+
         Object.entries(data.properties).forEach(([key, value]) => {
             const inputId = `${data.thingId}-${key}`;
             const input = document.getElementById(inputId);
 
-            // NOUVEAU : Logique pour mettre à jour le slider et sa valeur texte
             if (key === 'brightness') {
                 const slider = document.getElementById(`${data.thingId}-brightness-slider`);
                 const valueSpan = document.getElementById(`${data.thingId}-brightness-value`);
@@ -325,14 +354,35 @@ function updateThing(data) {
                     valueSpan.textContent = value;
                 }
             }
-                // FIN NOUVEAU
-
-            // Logique originale pour les autres champs
+            else if (key === 'targetTemperature') {
+                const slider = document.getElementById(`${data.thingId}-targetTemperature-slider`);
+                const valueSpan = document.getElementById(`${data.thingId}-targetTemperature-value`);
+                if (slider) {
+                    slider.value = value;
+                }
+                if (valueSpan) {
+                    valueSpan.textContent = value;
+                }
+            }
             else if (input) {
                 if (input.type === 'checkbox') {
                     input.checked = value;
                 } else if (input.tagName === 'SELECT') {
                     input.value = value;
+
+                    if (key === 'mode') {
+                        const targetTempSlider = document.getElementById(`${data.thingId}-targetTemperature-slider`);
+                        if (targetTempSlider) {
+                            targetTempSlider.disabled = (value !== 'manual');
+                        }
+                    }
+                    if (key === 'color') {
+                        const slider = document.getElementById(`${data.thingId}-brightness-slider`);
+                        if(slider) {
+                            const colorHex = colorMap[value] || '#ffeb3b';
+                            slider.style.background = `linear-gradient(to right, #263238, ${colorHex})`;
+                        }
+                    }
                 } else {
                     input.value = value;
                 }
@@ -370,14 +420,13 @@ function updateDeviceVisual(thingId, type, properties) {
             };
             const color = colorMap[properties.color] || '#ffeb3b';
 
-            // Interpolation de la couleur entre gris foncé et la couleur cible
             const brightnessFactor = brightness / 100;
 
             bulb.style.background = `radial-gradient(circle, ${color}, #ffd600)`;
-            bulb.style.opacity = 0.3 + (brightnessFactor * 0.7); // De 30% à 100% d'opacité
+            bulb.style.opacity = 0.3 + (brightnessFactor * 0.7);
             bulb.style.boxShadow = `0 0 ${20 * brightnessFactor}px ${color}`;
 
-            glow.style.opacity = brightnessFactor * 0.7; // De 0 à 0.7
+            glow.style.opacity = brightnessFactor * 0.7;
             glow.style.background = `radial-gradient(circle, ${color}88, transparent)`;
             visual.classList.add('active');
         } else {
@@ -405,10 +454,10 @@ function updateDeviceVisual(thingId, type, properties) {
             body.style.boxShadow = '0 4px 20px rgba(255,87,34,0.3), inset 0 2px 5px rgba(255,255,255,0.8)';
         } else if (properties.mode === 'eco') {
             body.style.borderColor = '#4caf50';
-            body.style.boxShadow = '0 4px 20px rgba(76,175,80,0.3), inset 0 2px 5px rgba(255,255,255,0.8)';
+            body.style.boxSizing = '0 4px 20px rgba(76,175,80,0.3), inset 0 2px 5px rgba(255,255,255,0.8)';
         } else {
             body.style.borderColor = '#9e9e9e';
-            body.style.boxShadow = '0 4px 20px rgba(0,0,0,0.2), inset 0 2px 5px rgba(255,255,255,0.8)';
+            body.style.boxSizing = '0 4px 20px rgba(0,0,0,0.2), inset 0 2px 5px rgba(255,255,255,0.8)';
         }
     }
 }
