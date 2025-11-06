@@ -2,6 +2,10 @@ const User = require('../models/User');
 
 class UserService {
     static async create(username, password) {
+        const existingUser = await User.findOne({ username });
+        if (existingUser) {
+            throw new Error('Un utilisateur avec ce nom existe déjà');
+        }
         const user = new User({ username, password });
         await user.save(); // ← token généré automatiquement
         return { token: user.token };
@@ -10,7 +14,7 @@ class UserService {
     static async login(username, password) {
         const user = await User.findOne({ username });
         if (!user || !(await user.comparePassword(password))) {
-            throw new Error('Invalid credentials');
+            throw new Error('Nom d\'utilisateur ou mot de passe incorrect');
         }
 
         // Regénère un token à chaque connexion
@@ -24,6 +28,10 @@ class UserService {
     static async validateToken(token) {
         const user = await User.findOne({ token });
         return !!user;
+    }
+
+    static async invalidateToken(token) {
+        await User.updateOne({ token }, { $unset: { token: 1 } });
     }
 
     static async findByToken(token) {

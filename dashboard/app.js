@@ -21,8 +21,11 @@ const Auth = {
         const u = $('regUsername').value.trim();
         const p = $('regPassword').value;
         if (!u || !p) return showMsg('All fields required', true);
-        api('/users', 'POST', { username: u, password: p }, () => {
-            this.login();
+
+        api('/users', 'POST', { username: u, password: p }, (data) => {
+            token = data.token;
+            localStorage.setItem('token', token);
+            initApp();
         });
     },
 
@@ -38,6 +41,15 @@ const Auth = {
     },
 
     logout() {
+        if (socket?.connected) socket.disconnect();
+        if (token) {
+            fetch(`${API_URL}/logout`, {
+                method: 'POST',
+                keepalive: true,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token })
+            }).catch(() => {});
+        }
         localStorage.removeItem('token');
         token = null;
         location.reload();
@@ -50,9 +62,25 @@ function api(path, method, body, success) {
         headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' },
         body: body ? JSON.stringify(body) : null
     })
-        .then(r => r.ok ? r.json() : Promise.reject(r.status))
+        .then(async (r) => {
+            // On attend TOUJOURS la réponse JSON
+            const data = await r.json();
+
+            if (r.ok) {
+                // Si c'est un succès, on passe les données
+                return data;
+            } else {
+                // Si c'est une erreur, on rejette la promesse
+                // AVEC le message d'erreur du serveur
+                return Promise.reject(data.error || 'Erreur inconnue');
+            }
+        })
         .then(data => success(data))
-        .catch(err => showMsg(err === 401 ? 'Invalid credentials' : 'Server error', true));
+        .catch(err => {
+            // 'err' est maintenant le VRAI message (ex: "Invalid credentials")
+            // On l'affiche simplement
+            showMsg(err, true);
+        });
 }
 
 function initApp() {
@@ -83,31 +111,68 @@ function fetchThings() {
         });
 }
 
+function getDeviceVisual(type) {
+    switch(type) {
+        case 'lamp':
+            return `
+                <div class="lamp-base"></div>
+                <div class="lamp-stand"></div>
+                <div class="lamp-bulb"></div>
+                <div class="lamp-glow"></div>
+            `;
+        case 'motion':
+            return `
+                <div class="motion-sensor">
+                    <div class="motion-eye"></div>
+                    <div class="motion-waves"></div>
+                </div>
+            `;
+        case 'thermostat':
+            return `
+                <div class="thermostat-body">
+                    <div class="thermostat-ring"></div>
+                    <div class="thermostat-display">
+                        <span class="temp-value">--°</span>
+                    </div>
+                </div>
+            `;
+        default:
+            return `<div class="default-device">?</div>`;
+    }
+}
+
 function renderThings(things) {
     const unique = {};
     things.forEach(t => { if (!unique[t.type]) unique[t.type] = t; });
 
     $('things').innerHTML = Object.values(unique).map(t => `
     <div class="thing">
-      <h3>${t.name} <small>(${t.type})</small></h3>
-      <div id="props-${t.id}" class="properties">Loading...</div>
-      ${token ? `
-      <div class="btn-group">
-        ${t.type === 'lamp' ? `
-          <button onclick="Thing.action('${t.id}', 'turnOn')">Turn On</button>
-          <button onclick="Thing.action('${t.id}', 'turnOff')">Turn Off</button>
-        ` : ''}
-        ${t.type === 'motion' ? `
-          <button onclick="Thing.action('${t.id}', 'simulateMotion')">Simulate Motion</button>
-        ` : ''}
-        ${t.type === 'thermostat' ? `
-          <button onclick="Thing.action('${t.id}', 'turnOn')">Turn On</button>
-          <button onclick="Thing.action('${t.id}', 'turnOff')">Turn Off</button>
-          <button onclick="Thing.action('${t.id}', 'setMode', {mode: 'eco'})">Eco Mode</button>
-          <button onclick="Thing.action('${t.id}', 'setMode', {mode: 'comfort'})">Comfort Mode</button>
+      <div class="thing-visual">
+        <div id="visual-${t.id}" class="device-visual ${t.type}-device">
+          ${getDeviceVisual(t.type)}
+        </div>
+      </div>
+      <div class="thing-info">
+        <h3>${t.name} <small>(${t.type})</small></h3>
+        <div id="props-${t.id}" class="properties">Loading...</div>
+        ${token ? `
+        <div class="btn-group">
+          ${t.type === 'lamp' ? `
+            <button onclick="Thing.action('${t.id}', 'turnOn')">Turn On</button>
+            <button onclick="Thing.action('${t.id}', 'turnOff')">Turn Off</button>
+          ` : ''}
+          ${t.type === 'motion' ? `
+            <button onclick="Thing.action('${t.id}', 'simulateMotion')">Simulate Motion</button>
+          ` : ''}
+          ${t.type === 'thermostat' ? `
+            <button onclick="Thing.action('${t.id}', 'turnOn')">Turn On</button>
+            <button onclick="Thing.action('${t.id}', 'turnOff')">Turn Off</button>
+            <button onclick="Thing.action('${t.id}', 'setMode', {mode: 'eco'})">Eco Mode</button>
+            <button onclick="Thing.action('${t.id}', 'setMode', {mode: 'comfort'})">Comfort Mode</button>
+          ` : ''}
+        </div>
         ` : ''}
       </div>
-      ` : ''}
     </div>
   `).join('');
 
@@ -121,6 +186,7 @@ function renderThings(things) {
             if (!res.ok) throw new Error('Unauthorized or server error');
             const props = await res.json();
             renderProperties(t.id, t.type, props.properties);
+            updateDeviceVisual(t.id, t.type, props.properties);
         } catch (err) {
             console.error(`Failed to fetch properties for ${t.name}:`, err);
             $(`props-${t.id}`).innerHTML = '<span class="error">Unauthorized or offline</span>';
@@ -142,6 +208,10 @@ function renderProperties(thingId, thingType, properties) {
 
         const isNumberReadonly = inputType === 'number' && readOnlyNumbers.includes(key);
 
+        // IDs pour le slider et sa valeur textuelle
+        const sliderId = `${thingId}-${key}-slider`;
+        const valueId = `${thingId}-${key}-value`;
+
         return `
         <div class="property-row">
             <label>${key}:</label>
@@ -151,7 +221,23 @@ function renderProperties(thingId, thingType, properties) {
                            id="${thingId}-${key}" 
                            ${inputValue}
                            disabled>
-                ` : inputType === 'number' ? `
+                `
+            // NOUVEAU : Logique spécifique pour le slider "brightness"
+            : key === 'brightness' ? `
+                    <div class="slider-wrapper">
+                        <input type="range"
+                               id="${sliderId}"
+                               min="0"
+                               max="100"
+                               step="1"
+                               ${inputValue}
+                               oninput="document.getElementById('${valueId}').textContent = this.value"
+                               onchange="Thing.updateProperty('${thingId}', '${key}', parseFloat(this.value), '${thingType}')">
+                        <span id="${valueId}" class="slider-value">${value}</span>
+                    </div>
+                `
+                // FIN NOUVEAU
+                : inputType === 'number' ? `
                     <input type="number" 
                            id="${thingId}-${key}" 
                            ${inputValue}
@@ -228,7 +314,21 @@ function updateThing(data) {
             const inputId = `${data.thingId}-${key}`;
             const input = document.getElementById(inputId);
 
-            if (input) {
+            // NOUVEAU : Logique pour mettre à jour le slider et sa valeur texte
+            if (key === 'brightness') {
+                const slider = document.getElementById(`${data.thingId}-brightness-slider`);
+                const valueSpan = document.getElementById(`${data.thingId}-brightness-value`);
+                if (slider) {
+                    slider.value = value;
+                }
+                if (valueSpan) {
+                    valueSpan.textContent = value;
+                }
+            }
+                // FIN NOUVEAU
+
+            // Logique originale pour les autres champs
+            else if (input) {
                 if (input.type === 'checkbox') {
                     input.checked = value;
                 } else if (input.tagName === 'SELECT') {
@@ -238,6 +338,78 @@ function updateThing(data) {
                 }
             }
         });
+
+        const visual = document.getElementById(`visual-${data.thingId}`);
+        if (visual) {
+            const type = visual.classList.contains('lamp-device') ? 'lamp' :
+                visual.classList.contains('motion-device') ? 'motion' : 'thermostat';
+
+            updateDeviceVisual(data.thingId, type, data.properties);
+        }
+    }
+}
+
+function updateDeviceVisual(thingId, type, properties) {
+    const visual = document.getElementById(`visual-${thingId}`);
+    if (!visual) return;
+
+    if (type === 'lamp') {
+        const bulb = visual.querySelector('.lamp-bulb');
+        const glow = visual.querySelector('.lamp-glow');
+
+        const brightness = properties.brightness || 0;
+        const isEffectivelyOn = properties.on && brightness > 0;
+
+        if (isEffectivelyOn) {
+            const colorMap = {
+                'white': '#ffffff',
+                'red': '#f44336',
+                'blue': '#2196f3',
+                'green': '#4caf50',
+                'yellow': '#ffeb3b'
+            };
+            const color = colorMap[properties.color] || '#ffeb3b';
+
+            // Interpolation de la couleur entre gris foncé et la couleur cible
+            const brightnessFactor = brightness / 100;
+
+            bulb.style.background = `radial-gradient(circle, ${color}, #ffd600)`;
+            bulb.style.opacity = 0.3 + (brightnessFactor * 0.7); // De 30% à 100% d'opacité
+            bulb.style.boxShadow = `0 0 ${20 * brightnessFactor}px ${color}`;
+
+            glow.style.opacity = brightnessFactor * 0.7; // De 0 à 0.7
+            glow.style.background = `radial-gradient(circle, ${color}88, transparent)`;
+            visual.classList.add('active');
+        } else {
+            bulb.style.background = '#555';
+            bulb.style.opacity = 1;
+            bulb.style.boxShadow = 'inset 0 -5px 10px rgba(0,0,0,0.3)';
+            glow.style.opacity = 0;
+            visual.classList.remove('active');
+        }
+    } else if (type === 'motion') {
+        if (properties.motion) {
+            visual.classList.add('detecting');
+            setTimeout(() => visual.classList.remove('detecting'), 2000);
+        }
+    } else if (type === 'thermostat') {
+        const tempDisplay = visual.querySelector('.temp-value');
+        const body = visual.querySelector('.thermostat-body');
+
+        if (tempDisplay && properties.currentTemperature !== undefined) {
+            tempDisplay.textContent = `${Math.round(properties.currentTemperature)}°`;
+        }
+
+        if (properties.mode === 'comfort') {
+            body.style.borderColor = '#ff5722';
+            body.style.boxShadow = '0 4px 20px rgba(255,87,34,0.3), inset 0 2px 5px rgba(255,255,255,0.8)';
+        } else if (properties.mode === 'eco') {
+            body.style.borderColor = '#4caf50';
+            body.style.boxShadow = '0 4px 20px rgba(76,175,80,0.3), inset 0 2px 5px rgba(255,255,255,0.8)';
+        } else {
+            body.style.borderColor = '#9e9e9e';
+            body.style.boxShadow = '0 4px 20px rgba(0,0,0,0.2), inset 0 2px 5px rgba(255,255,255,0.8)';
+        }
     }
 }
 
@@ -249,7 +421,18 @@ function showMsg(msg, isError = false) {
 
 token = localStorage.getItem('token');
 if (token) {
-    api('/things', 'GET', null, () => initApp());
+    api('/things', 'GET', null, () => initApp(), err => {
+        if (err === 401) Auth.logout();
+        else showMsg('Server error', true);
+    });
 } else {
     fetchThings();
 }
+
+window.addEventListener('storage', (event) => {
+    if (event.key === 'token' && event.newValue === null) {
+        if (socket?.connected) socket.disconnect();
+        token = null;
+        location.reload();
+    }
+});

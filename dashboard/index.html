@@ -15,25 +15,25 @@
 
     <section id="auth" class="card auth-container">
         <div class="auth-slider">
-            <div class="auth-panel">
+            <form class="auth-panel" onsubmit="Auth.login(); return false;">
                 <h2>Login</h2>
                 <input id="loginUsername" placeholder="Username" />
                 <input id="loginPassword" type="password" placeholder="Password" />
-                <button onclick="Auth.login()">Log In</button>
+                <button type="submit">Log In</button>
                 <p class="switch-text">
                     No account? <span onclick="Auth.switchToRegister()" class="link">Register here</span>
                 </p>
-            </div>
+            </form>
 
-            <div class="auth-panel">
+            <form class="auth-panel" onsubmit="Auth.register(); return false;">
                 <h2>Register</h2>
                 <input id="regUsername" placeholder="Username" />
                 <input id="regPassword" type="password" placeholder="Password" />
-                <button onclick="Auth.register()">Sign Up</button>
+                <button type="submit">Sign Up</button>
                 <p class="switch-text">
                     Already have an account? <span onclick="Auth.switchToLogin()" class="link">Log in here</span>
                 </p>
-            </div>
+            </form>
         </div>
         <p id="authMsg" class="msg"></p>
     </section>

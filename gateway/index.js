@@ -78,6 +78,14 @@ app.post('/login', async (req, res) => {
     }
 });
 
+app.post('/logout', async (req, res) => {
+    const token = req.body?.token || req.headers.authorization?.split(' ')[1];
+    if (token) await UserService.invalidateToken(token);
+    await EventService.log('system', 'user', 'logout');
+    console.log('user logged out');
+    res.json({ ok: true });
+});
+
 app.get('/analytics', authenticateToken, async (req, res) => {
     const events = await EventService.getUserEvents();
     res.json(events);
