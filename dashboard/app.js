@@ -63,16 +63,22 @@ function api(path, method, body, success) {
         body: body ? JSON.stringify(body) : null
     })
         .then(async (r) => {
+            // On attend TOUJOURS la réponse JSON
             const data = await r.json();
 
             if (r.ok) {
+                // Si c'est un succès, on passe les données
                 return data;
             } else {
+                // Si c'est une erreur, on rejette la promesse
+                // AVEC le message d'erreur du serveur
                 return Promise.reject(data.error || 'Erreur inconnue');
             }
         })
         .then(data => success(data))
         .catch(err => {
+            // 'err' est maintenant le VRAI message (ex: "Invalid credentials")
+            // On l'affiche simplement
             showMsg(err, true);
         });
 }
@@ -159,8 +165,7 @@ function renderThings(things) {
             <button onclick="Thing.action('${t.id}', 'simulateMotion')">Simulate Motion</button>
           ` : ''}
           ${t.type === 'thermostat' ? `
-            <button onclick="Thing.action('${t.id}', 'turnOn')">Turn On</button>
-            <button onclick="Thing.action('${t.id}', 'turnOff')">Turn Off</button>
+            <button onclick="Thing.action('${t.id}', 'setMode', {mode: 'manual'})">Manual Mode</button>
             <button onclick="Thing.action('${t.id}', 'setMode', {mode: 'eco'})">Eco Mode</button>
             <button onclick="Thing.action('${t.id}', 'setMode', {mode: 'comfort'})">Comfort Mode</button>
           ` : ''}
@@ -192,7 +197,15 @@ function renderProperties(thingId, thingType, properties) {
     const el = document.getElementById(`props-${thingId}`);
     if (!el) return;
 
-    const readOnlyNumbers = ['currentTemperature', 'targetTemperature'];
+    const readOnlyNumbers = ['currentTemperature'];
+
+    const colorMap = {
+        'white': '#ffffff',
+        'red': '#f44336',
+        'blue': '#2196f3',
+        'green': '#4caf50',
+        'yellow': '#ffeb3b'
+    };
 
     const propertyInputs = Object.entries(properties).map(([key, value]) => {
         const inputType = typeof value === 'boolean' ? 'checkbox' :
@@ -224,16 +237,34 @@ function renderProperties(thingId, thingType, properties) {
                                step="1"
                                ${inputValue}
                                oninput="document.getElementById('${valueId}').textContent = this.value"
-                               onchange="Thing.updateProperty('${thingId}', '${key}', parseFloat(this.value), '${thingType}')">
+                               onchange="Thing.updateProperty('${thingId}', '${key}', parseFloat(this.value), '${thingType}')"
+                               style="background: linear-gradient(to right, #263238, ${colorMap[properties.color] || '#ffeb3b'});"
+                        >
                         <span id="${valueId}" class="slider-value">${value}</span>
                     </div>
                 `
                 : inputType === 'number' ? `
+                    ${key === 'targetTemperature' ? `
+                        <div class="slider-wrapper">
+                            <input type="range"
+                                   id="${sliderId}"
+                                   min="10"
+                                   max="30"
+                                   step="0.5"
+                                   ${inputValue}
+                                   ${properties.mode !== 'manual' ? 'disabled' : ''} 
+                                   style="background: linear-gradient(to right, #2196f3, #ffeb3b, #ff9800, #f44336);"
+                                   oninput="document.getElementById('${valueId}').textContent = this.value"
+                                   onchange="Thing.updateProperty('${thingId}', '${key}', parseFloat(this.value), '${thingType}')">
+                            <span id="${valueId}" class="slider-value">${value}</span>
+                        </div>
+                    ` : `
                     <input type="number" 
-                           id="${thingId}-${key}" 
-                           ${inputValue}
-                           step="0.1"
-                           ${isNumberReadonly ? 'readonly' : `onchange="Thing.updateProperty('${thingId}', '${key}', parseFloat(this.value), '${thingType}')"`}>
+                               id="${thingId}-${key}" 
+                               ${inputValue}
+                               step="0.1"
+                               ${isNumberReadonly ? 'readonly' : `onchange="Thing.updateProperty('${thingId}', '${key}', parseFloat(this.value), '${thingType}')"`}>
+                    `}
                 ` : key === 'color' ? `
                     <select id="${thingId}-${key}" 
                             onchange="Thing.updateProperty('${thingId}', '${key}', this.value, '${thingType}')">
@@ -246,7 +277,7 @@ function renderProperties(thingId, thingType, properties) {
                 ` : key === 'mode' ? `
                     <select id="${thingId}-${key}" 
                             onchange="Thing.updateProperty('${thingId}', '${key}', this.value, '${thingType}')">
-                        <option value="off" ${value === 'off' ? 'selected' : ''}>Off</option>
+                        <option value="manual" ${value === 'manual' ? 'selected' : ''}>Manual</option>
                         <option value="eco" ${value === 'eco' ? 'selected' : ''}>Eco</option>
                         <option value="comfort" ${value === 'comfort' ? 'selected' : ''}>Comfort</option>
                     </select>
@@ -301,6 +332,14 @@ const Thing = {
 
 function updateThing(data) {
     if (data.properties) {
+        const colorMap = {
+            'white': '#ffffff',
+            'red': '#f44336',
+            'blue': '#2196f3',
+            'green': '#4caf50',
+            'yellow': '#ffeb3b'
+        };
+
         Object.entries(data.properties).forEach(([key, value]) => {
             const inputId = `${data.thingId}-${key}`;
             const input = document.getElementById(inputId);
@@ -315,12 +354,35 @@ function updateThing(data) {
                     valueSpan.textContent = value;
                 }
             }
-
+            else if (key === 'targetTemperature') {
+                const slider = document.getElementById(`${data.thingId}-targetTemperature-slider`);
+                const valueSpan = document.getElementById(`${data.thingId}-targetTemperature-value`);
+                if (slider) {
+                    slider.value = value;
+                }
+                if (valueSpan) {
+                    valueSpan.textContent = value;
+                }
+            }
             else if (input) {
                 if (input.type === 'checkbox') {
                     input.checked = value;
                 } else if (input.tagName === 'SELECT') {
                     input.value = value;
+
+                    if (key === 'mode') {
+                        const targetTempSlider = document.getElementById(`${data.thingId}-targetTemperature-slider`);
+                        if (targetTempSlider) {
+                            targetTempSlider.disabled = (value !== 'manual');
+                        }
+                    }
+                    if (key === 'color') {
+                        const slider = document.getElementById(`${data.thingId}-brightness-slider`);
+                        if(slider) {
+                            const colorHex = colorMap[value] || '#ffeb3b';
+                            slider.style.background = `linear-gradient(to right, #263238, ${colorHex})`;
+                        }
+                    }
                 } else {
                     input.value = value;
                 }
@@ -392,10 +454,10 @@ function updateDeviceVisual(thingId, type, properties) {
             body.style.boxShadow = '0 4px 20px rgba(255,87,34,0.3), inset 0 2px 5px rgba(255,255,255,0.8)';
         } else if (properties.mode === 'eco') {
             body.style.borderColor = '#4caf50';
-            body.style.boxShadow = '0 4px 20px rgba(76,175,80,0.3), inset 0 2px 5px rgba(255,255,255,0.8)';
+            body.style.boxSizing = '0 4px 20px rgba(76,175,80,0.3), inset 0 2px 5px rgba(255,255,255,0.8)';
         } else {
             body.style.borderColor = '#9e9e9e';
-            body.style.boxShadow = '0 4px 20px rgba(0,0,0,0.2), inset 0 2px 5px rgba(255,255,255,0.8)';
+            body.style.boxSizing = '0 4px 20px rgba(0,0,0,0.2), inset 0 2px 5px rgba(255,255,255,0.8)';
         }
     }
 }
