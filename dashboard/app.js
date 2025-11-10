@@ -63,22 +63,16 @@ function api(path, method, body, success) {
         body: body ? JSON.stringify(body) : null
     })
         .then(async (r) => {
-            // On attend TOUJOURS la réponse JSON
             const data = await r.json();
 
             if (r.ok) {
-                // Si c'est un succès, on passe les données
                 return data;
             } else {
-                // Si c'est une erreur, on rejette la promesse
-                // AVEC le message d'erreur du serveur
                 return Promise.reject(data.error || 'Erreur inconnue');
             }
         })
         .then(data => success(data))
         .catch(err => {
-            // 'err' est maintenant le VRAI message (ex: "Invalid credentials")
-            // On l'affiche simplement
             showMsg(err, true);
         });
 }
@@ -208,7 +202,6 @@ function renderProperties(thingId, thingType, properties) {
 
         const isNumberReadonly = inputType === 'number' && readOnlyNumbers.includes(key);
 
-        // IDs pour le slider et sa valeur textuelle
         const sliderId = `${thingId}-${key}-slider`;
         const valueId = `${thingId}-${key}-value`;
 
@@ -222,7 +215,6 @@ function renderProperties(thingId, thingType, properties) {
                            ${inputValue}
                            disabled>
                 `
-            // NOUVEAU : Logique spécifique pour le slider "brightness"
             : key === 'brightness' ? `
                     <div class="slider-wrapper">
                         <input type="range"
@@ -236,7 +228,6 @@ function renderProperties(thingId, thingType, properties) {
                         <span id="${valueId}" class="slider-value">${value}</span>
                     </div>
                 `
-                // FIN NOUVEAU
                 : inputType === 'number' ? `
                     <input type="number" 
                            id="${thingId}-${key}" 
@@ -314,7 +305,6 @@ function updateThing(data) {
             const inputId = `${data.thingId}-${key}`;
             const input = document.getElementById(inputId);
 
-            // NOUVEAU : Logique pour mettre à jour le slider et sa valeur texte
             if (key === 'brightness') {
                 const slider = document.getElementById(`${data.thingId}-brightness-slider`);
                 const valueSpan = document.getElementById(`${data.thingId}-brightness-value`);
@@ -325,9 +315,7 @@ function updateThing(data) {
                     valueSpan.textContent = value;
                 }
             }
-                // FIN NOUVEAU
 
-            // Logique originale pour les autres champs
             else if (input) {
                 if (input.type === 'checkbox') {
                     input.checked = value;
@@ -370,14 +358,13 @@ function updateDeviceVisual(thingId, type, properties) {
             };
             const color = colorMap[properties.color] || '#ffeb3b';
 
-            // Interpolation de la couleur entre gris foncé et la couleur cible
             const brightnessFactor = brightness / 100;
 
             bulb.style.background = `radial-gradient(circle, ${color}, #ffd600)`;
-            bulb.style.opacity = 0.3 + (brightnessFactor * 0.7); // De 30% à 100% d'opacité
+            bulb.style.opacity = 0.3 + (brightnessFactor * 0.7);
             bulb.style.boxShadow = `0 0 ${20 * brightnessFactor}px ${color}`;
 
-            glow.style.opacity = brightnessFactor * 0.7; // De 0 à 0.7
+            glow.style.opacity = brightnessFactor * 0.7;
             glow.style.background = `radial-gradient(circle, ${color}88, transparent)`;
             visual.classList.add('active');
         } else {

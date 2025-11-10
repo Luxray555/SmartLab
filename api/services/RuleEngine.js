@@ -42,19 +42,16 @@ class RuleEngine {
         const thermostat = await ThingService.findByType('thermostat');
         if (!lamp || !thermostat) return;
 
-        // Rule 1
         if (this.state.motion.active && !this.state.lamp.on) {
             this.trigger(lamp, 'turnOn');
             setTimeout(() => this.trigger(lamp, 'turnOff'), oneMin);
         }
 
-        // Rule 2
         if (this.state.thermostat.current < 19 && this.state.motion.active) {
             this.trigger(thermostat, 'setMode', { mode: 'comfort' });
             this.trigger(lamp, 'turnOn');
         }
 
-        // Rule 3
         if (this.state.motion.lastDetected) {
             const last = new Date(this.state.motion.lastDetected).getTime();
             if (now - last > fiveMin) {

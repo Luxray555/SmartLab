@@ -7,7 +7,7 @@ class UserService {
             throw new Error('Un utilisateur avec ce nom existe déjà');
         }
         const user = new User({ username, password });
-        await user.save(); // ← token généré automatiquement
+        await user.save();
         return { token: user.token };
     }
 
@@ -17,7 +17,6 @@ class UserService {
             throw new Error('Nom d\'utilisateur ou mot de passe incorrect');
         }
 
-        // Regénère un token à chaque connexion
         user.token = require('crypto').randomBytes(32).toString('hex');
         await user.save();
 
