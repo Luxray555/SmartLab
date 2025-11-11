@@ -86,8 +86,10 @@ class RuleEngine {
 
         // Rule 2: Temp < 18°C + motion → comfort mode
         if (type === 'thermostat' && key === 'currentTemperature' && value < 18 && this.state.motion.active) {
-            console.log('Rule 2: Cold + Presence → Comfort Mode');
-            await this.trigger(thermostat, 'setMode', { mode: 'comfort' });
+            if (this.state.thermostat.mode !== 'comfort') {
+                console.log('Rule 2: Cold + Presence → Comfort Mode');
+                await this.trigger(thermostat, 'setMode', { mode: 'comfort' });
+            }
         }
     }
 
@@ -165,9 +167,13 @@ class RuleEngine {
             }
 
             // Rule 2 backup: Cold + presence → comfort mode
-            if (this.state.thermostat.current < 19 && this.state.motion.active) {
-                await this.trigger(thermostat, 'setMode', { mode: 'comfort' });
-                await this.trigger(lamp, 'turnOn');
+            if (this.state.thermostat.current < 18 && this.state.motion.active) {
+                if (this.state.thermostat.mode !== 'comfort') {
+                    await this.trigger(thermostat, 'setMode', { mode: 'comfort' });
+                }
+                if (!this.state.lamp.on) {
+                    await this.trigger(lamp, 'turnOn');
+                }
             }
         }, 30 * 1000);
     }

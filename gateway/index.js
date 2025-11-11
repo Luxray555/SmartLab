@@ -169,6 +169,12 @@ app.post('/things/:id/updated', async (req, res) => {
         return res.status(404).json({ error: 'Thing not found' });
     }
 
+    const updatedThing = {
+        ...thing,
+        properties: { ...thing.properties, ...properties } // Fusionne
+    };
+    things.set(req.params.id, updatedThing);
+
     io.emit('thing:updated', { thingId, type, properties });
 
     // Trigger rule engine rules
