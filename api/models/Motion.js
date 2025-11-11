@@ -10,9 +10,15 @@ class Motion extends Thing {
             properties: { motion: false, lastDetected: null },
             actions: {
                 simulateMotion: async () => {
-                    this.setProperty('motion', true);
-                    this.setProperty('lastDetected', new Date().toISOString());
-                    setTimeout(() => this.setProperty('motion', false), 2000);
+                    const now = new Date().toISOString();
+                    this.setProperties({
+                        motion: true,
+                        lastDetected: now
+                    });
+                    // Auto-off après 5 sec
+                    setTimeout(() => {
+                        this.setProperty('motion', false);
+                    }, 5000);
                 }
             }
         });

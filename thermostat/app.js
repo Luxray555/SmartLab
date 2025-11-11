@@ -9,10 +9,12 @@ app.use(express.json());
 const PORT = 3002;
 const thermostat = new Thermostat({ endpoint: `http://localhost:${PORT}` });
 
+// Register thermostat with the gateway
 thermostat.register()
     .then(() => console.log(`Thermostat registered with ID: ${thermostat.id}`))
     .catch(err => console.error('Failed to register thermostat:', err));
 
+// Validate token with the gateway
 const validateToken = async (token) => {
     try {
         const response = await fetch('http://localhost:3000/validate-token', {
@@ -26,6 +28,7 @@ const validateToken = async (token) => {
     }
 };
 
+// Get thermostat properties
 app.get('/properties', async (req, res) => {
     const token = req.headers.authorization?.split(' ')[1];
     if (!token || !(await validateToken(token))) {
@@ -34,6 +37,7 @@ app.get('/properties', async (req, res) => {
     res.json(thermostat.properties);
 });
 
+// Execute action on thermostat
 app.post('/actions/:action', async (req, res) => {
     const token = req.headers.authorization?.split(' ')[1];
     if (!token || !(await validateToken(token))) {
@@ -47,9 +51,11 @@ app.post('/actions/:action', async (req, res) => {
     }
 });
 
+// Simulate thermostat behavior every 3 seconds
 setInterval(() => {
     const { currentTemperature, targetTemperature, mode, heating } = thermostat.properties;
 
+    // Off mode: stop heating and gradual cooling
     if (mode === 'off') {
         thermostat.setProperty('heating', false);
         if (currentTemperature > 15) {
@@ -58,12 +64,14 @@ setInterval(() => {
         return;
     }
 
+    // Auto-adjust target temperature based on mode
     if (mode === 'eco') {
         thermostat.setProperty('targetTemperature', 17);
     } else if (mode === 'comfort') {
         thermostat.setProperty('targetTemperature', 19);
     }
 
+    // Temperature regulation
     const diff = targetTemperature - currentTemperature;
     if (Math.abs(diff) > 0.1) {
         thermostat.setProperty('heating', diff > 0);

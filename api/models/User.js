@@ -7,6 +7,7 @@ const UserSchema = new mongoose.Schema({
     token: { type: String, unique: true, sparse: true }
 });
 
+// Hash password and generate token before saving
 UserSchema.pre('save', async function() {
     if (this.isModified('password')) {
         this.password = await bcrypt.hash(this.password, 10);
@@ -16,6 +17,7 @@ UserSchema.pre('save', async function() {
     }
 });
 
+// Compare password with hashed version
 UserSchema.methods.comparePassword = async function(pwd) {
     return await bcrypt.compare(pwd, this.password);
 };

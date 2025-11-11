@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 
+// Event schema for logging system activities
 const EventSchema = new mongoose.Schema({
     thingId: { type: String, required: true },
     thingType: { type: String, required: true },

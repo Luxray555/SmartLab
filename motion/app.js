@@ -9,10 +9,12 @@ app.use(express.json());
 const PORT = 3003;
 const motion = new MotionSensor({ endpoint: `http://localhost:${PORT}` });
 
+// Register motion sensor with the gateway
 motion.register()
     .then(() => console.log(`Motion Sensor registered with ID: ${motion.id}`))
     .catch(err => console.error('Failed to register motion sensor:', err));
 
+// Validate token with the gateway
 const validateToken = async (token) => {
     try {
         const response = await fetch('http://localhost:3000/validate-token', {
@@ -26,6 +28,7 @@ const validateToken = async (token) => {
     }
 };
 
+// Get sensor properties
 app.get('/properties', async (req, res) => {
     const token = req.headers.authorization?.split(' ')[1];
     if (!token || !(await validateToken(token))) {
@@ -34,6 +37,7 @@ app.get('/properties', async (req, res) => {
     res.json(motion.properties);
 });
 
+// Execute action on sensor
 app.post('/actions/:action', async (req, res) => {
     const token = req.headers.authorization?.split(' ')[1];
     if (!token || !(await validateToken(token))) {

@@ -15,8 +15,51 @@ const io = new Server(server, { cors: { origin: "*" } });
 
 connectDB();
 
+const fs = require('fs');
+const path = require('path');
+
+// Initialize system: create "system" user and save token
+async function initSystem() {
+    let user = await UserService.findByUsername('system');
+    if (!user) {
+        user = await UserService.create('system', 'SuperSecret123!');
+    }
+    const token = await UserService.generateToken('system');
+
+    // Save token to .env file
+    const envPath = path.join(__dirname, '..', '.env');
+    const envLine = `SYSTEM_TOKEN=${token}\n`;
+
+    try {
+        let envContent = '';
+        if (fs.existsSync(envPath)) {
+            envContent = fs.readFileSync(envPath, 'utf8');
+            const lines = envContent.split('\n').filter(line => !line.startsWith('SYSTEM_TOKEN='));
+            lines.push(envLine);
+            envContent = lines.join('\n');
+        } else {
+            envContent = envLine;
+        }
+        fs.writeFileSync(envPath, envContent.trim() + '\n', 'utf8');
+        console.log('SYSTEM_TOKEN saved to .env');
+    } catch (err) {
+        console.error('Failed to save SYSTEM_TOKEN to .env:', err);
+    }
+
+    RuleEngine.setSystemToken(token);
+    console.log('System token ready for RuleEngine');
+}
+
+initSystem().catch(console.error);
+
+// Connected things registry
 const things = new Map();
 
+const RuleEngine = require('../api/services/RuleEngine');
+RuleEngine.setRegistry(things);
+RuleEngine.start();
+
+// Middleware: user authentication
 const authenticateToken = async (req, res, next) => {
     const token = req.headers.authorization?.split(' ')[1];
     if (!token || !(await UserService.validateToken(token))) {
@@ -26,14 +69,23 @@ const authenticateToken = async (req, res, next) => {
     next();
 };
 
-const isLocalRequest = (req, res, next) => {
-    const ip = req.socket.remoteAddress;
-    if (ip !== '127.0.0.1' && ip !== '::1' && ip !== '::ffff:127.0.0.1') {
-        return res.status(403).json({ error: 'Access denied: Internal service only' });
+// Middleware: verify system token
+const isSystemToken = async (req, res, next) => {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) return res.status(401).json({ error: 'Missing token' });
+
+    try {
+        const user = await UserService.findByToken(token);
+        if (user.username !== 'system') {
+            return res.status(403).json({ error: 'System token required' });
+        }
+        next();
+    } catch {
+        return res.status(401).json({ error: 'Invalid token' });
     }
-    next();
 };
 
+// Token validation
 app.post('/validate-token', async (req, res) => {
     const { token } = req.body;
     if (!token) {
@@ -44,11 +96,13 @@ app.post('/validate-token', async (req, res) => {
     res.json({ valid: isValid });
 });
 
+// List connected things
 app.get('/things', authenticateToken, async (req, res) => {
     res.json(Array.from(things.values()));
 });
 
-app.post('/things', isLocalRequest, async (req, res) => {
+// Register a new thing (system only)
+app.post('/things', isSystemToken, async (req, res) => {
     const { name, type, endpoint } = req.body;
     const id = `${type}-${Date.now()}`;
 
@@ -59,6 +113,7 @@ app.post('/things', isLocalRequest, async (req, res) => {
     res.json(thing);
 });
 
+// Create user
 app.post('/users', async (req, res) => {
     try {
         const user = await UserService.create(req.body.username, req.body.password);
@@ -68,6 +123,7 @@ app.post('/users', async (req, res) => {
     }
 });
 
+// User login
 app.post('/login', async (req, res) => {
     try {
         const user = await UserService.login(req.body.username, req.body.password);
@@ -78,6 +134,7 @@ app.post('/login', async (req, res) => {
     }
 });
 
+// User logout
 app.post('/logout', async (req, res) => {
     const token = req.body?.token || req.headers.authorization?.split(' ')[1];
     if (token) await UserService.invalidateToken(token);
@@ -86,12 +143,14 @@ app.post('/logout', async (req, res) => {
     res.json({ ok: true });
 });
 
+// Get user events
 app.get('/analytics', authenticateToken, async (req, res) => {
     const events = await EventService.getUserEvents();
     res.json(events);
 });
 
-app.post('/event', isLocalRequest, async (req, res) => {
+// Log an event (system only)
+app.post('/event', isSystemToken, async (req, res) => {
     const { thingId, thingType, type, data } = req.body;
     if (!thingId || !type) return res.status(400).json({ error: 'Missing fields' });
 
@@ -101,6 +160,7 @@ app.post('/event', isLocalRequest, async (req, res) => {
     res.json({ success: true });
 });
 
+// Thing update notification
 app.post('/things/:id/updated', async (req, res) => {
     const { thingId, type, properties } = req.body;
 
@@ -111,11 +171,20 @@ app.post('/things/:id/updated', async (req, res) => {
 
     io.emit('thing:updated', { thingId, type, properties });
 
+    // Trigger rule engine rules
+    for (const [key, value] of Object.entries(properties)) {
+        await RuleEngine.update({
+            type: 'propertyChanged',
+            thingType: type,
+            thingId,
+            data: { key, value }
+        });
+    }
+
     res.json({ success: true });
 });
 
-// AJOUTE ÇA DANS index.js (juste après les autres routes)
-
+// Get thing properties (proxy to service)
 app.get('/things/:id/properties', authenticateToken, async (req, res) => {
     const thingId = req.params.id;
     const thing = things.get(thingId);
@@ -149,6 +218,7 @@ app.get('/things/:id/properties', authenticateToken, async (req, res) => {
     }
 });
 
+// WebSocket connection handling
 io.on('connection', async (socket) => {
     const token = socket.handshake.auth.token;
     if (!token || !(await UserService.validateToken(token))) {
@@ -165,6 +235,7 @@ io.on('connection', async (socket) => {
     }
     await EventService.log('user', 'user', 'connect', { username });
 
+    // Execute action on thing via WebSocket
     socket.on('thing:action', async (data) => {
         if (!(await UserService.validateToken(data.token))) return;
         const thing = things.get(data.thingId);

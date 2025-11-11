@@ -9,10 +9,12 @@ app.use(express.json());
 const PORT = 3001;
 const lamp = new Lamp({ endpoint: `http://localhost:${PORT}` });
 
+// Register lamp with the gateway
 lamp.register()
     .then(() => console.log(`Lamp registered with ID: ${lamp.id}`))
     .catch(err => console.error('Failed to register lamp:', err));
 
+// Validate token with the gateway
 const validateToken = async (token) => {
     try {
         const response = await fetch('http://localhost:3000/validate-token', {
@@ -26,6 +28,7 @@ const validateToken = async (token) => {
     }
 };
 
+// Get lamp properties
 app.get('/properties', async (req, res) => {
     const token = req.headers.authorization?.split(' ')[1];
     if (!token || !(await validateToken(token))) {
@@ -34,6 +37,7 @@ app.get('/properties', async (req, res) => {
     res.json(lamp.properties);
 });
 
+// Execute action on lamp
 app.post('/actions/:action', async (req, res) => {
     const token = req.headers.authorization?.split(' ')[1];
     if (!token || !(await validateToken(token))) {

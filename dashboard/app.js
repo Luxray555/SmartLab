@@ -4,6 +4,7 @@ let socket, token = null;
 const $ = id => document.getElementById(id);
 const $$ = sel => document.querySelector(sel);
 
+// Authentication management
 const Auth = {
     current: 'login',
 
@@ -56,6 +57,7 @@ const Auth = {
     }
 };
 
+// API request helper with error handling
 function api(path, method, body, success) {
     fetch(`${API_URL}${path}`, {
         method,
@@ -63,26 +65,21 @@ function api(path, method, body, success) {
         body: body ? JSON.stringify(body) : null
     })
         .then(async (r) => {
-            // On attend TOUJOURS la réponse JSON
             const data = await r.json();
 
             if (r.ok) {
-                // Si c'est un succès, on passe les données
                 return data;
             } else {
-                // Si c'est une erreur, on rejette la promesse
-                // AVEC le message d'erreur du serveur
-                return Promise.reject(data.error || 'Erreur inconnue');
+                return Promise.reject(data.error || 'Unknown error');
             }
         })
         .then(data => success(data))
         .catch(err => {
-            // 'err' est maintenant le VRAI message (ex: "Invalid credentials")
-            // On l'affiche simplement
             showMsg(err, true);
         });
 }
 
+// Initialize application after authentication
 function initApp() {
     $('auth').classList.add('hidden');
     $('app').classList.remove('hidden');
@@ -90,6 +87,7 @@ function initApp() {
     fetchThings();
 }
 
+// Initialize WebSocket connection
 function initSocket() {
     socket = io(API_URL, { auth: { token } });
     socket.on('things:list', renderThings);
@@ -97,6 +95,7 @@ function initSocket() {
     socket.on('thing:updated', updateThing);
 }
 
+// Fetch list of connected things from gateway
 function fetchThings() {
     const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
     fetch(`${API_URL}/things`, { headers })
@@ -111,6 +110,7 @@ function fetchThings() {
         });
 }
 
+// Get visual representation for each device type
 function getDeviceVisual(type) {
     switch(type) {
         case 'lamp':
@@ -141,6 +141,7 @@ function getDeviceVisual(type) {
     }
 }
 
+// Render things list with controls
 function renderThings(things) {
     const unique = {};
     things.forEach(t => { if (!unique[t.type]) unique[t.type] = t; });
@@ -175,6 +176,7 @@ function renderThings(things) {
     </div>
   `).join('');
 
+    // Fetch and render properties for each thing
     Object.values(unique).forEach(async t => {
         try {
             const res = await fetch(`http://localhost:3000/things/${t.id}/properties`, {
@@ -193,6 +195,7 @@ function renderThings(things) {
     });
 }
 
+// Render properties with interactive controls
 function renderProperties(thingId, thingType, properties) {
     const el = document.getElementById(`props-${thingId}`);
     if (!el) return;
@@ -297,6 +300,7 @@ function renderProperties(thingId, thingType, properties) {
     el.innerHTML = propertyInputs;
 }
 
+// Thing actions and property updates
 const Thing = {
     action(thingId, actionName, params = {}) {
         socket.emit('thing:action', { thingId, action: actionName, params, token });
@@ -330,6 +334,7 @@ const Thing = {
     }
 };
 
+// Update thing display when properties change
 function updateThing(data) {
     if (data.properties) {
         const colorMap = {
@@ -347,22 +352,14 @@ function updateThing(data) {
             if (key === 'brightness') {
                 const slider = document.getElementById(`${data.thingId}-brightness-slider`);
                 const valueSpan = document.getElementById(`${data.thingId}-brightness-value`);
-                if (slider) {
-                    slider.value = value;
-                }
-                if (valueSpan) {
-                    valueSpan.textContent = value;
-                }
+                if (slider) slider.value = value;
+                if (valueSpan) valueSpan.textContent = value;
             }
             else if (key === 'targetTemperature') {
                 const slider = document.getElementById(`${data.thingId}-targetTemperature-slider`);
                 const valueSpan = document.getElementById(`${data.thingId}-targetTemperature-value`);
-                if (slider) {
-                    slider.value = value;
-                }
-                if (valueSpan) {
-                    valueSpan.textContent = value;
-                }
+                if (slider) slider.value = value;
+                if (valueSpan) valueSpan.textContent = value;
             }
             else if (input) {
                 if (input.type === 'checkbox') {
@@ -399,6 +396,7 @@ function updateThing(data) {
     }
 }
 
+// Update visual representation of devices
 function updateDeviceVisual(thingId, type, properties) {
     const visual = document.getElementById(`visual-${thingId}`);
     if (!visual) return;
@@ -462,12 +460,14 @@ function updateDeviceVisual(thingId, type, properties) {
     }
 }
 
+// Display message to user
 function showMsg(msg, isError = false) {
     const el = $('authMsg');
     el.textContent = msg;
     el.className = isError ? 'msg error' : 'msg success';
 }
 
+// Auto-login on page load if token exists
 token = localStorage.getItem('token');
 if (token) {
     api('/things', 'GET', null, () => initApp(), err => {
@@ -478,6 +478,7 @@ if (token) {
     fetchThings();
 }
 
+// Handle logout in other tabs
 window.addEventListener('storage', (event) => {
     if (event.key === 'token' && event.newValue === null) {
         if (socket?.connected) socket.disconnect();
