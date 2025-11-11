@@ -45,6 +45,19 @@
         </div>
         <div id="things"></div>
     </section>
+
+    <section id="events" class="card hidden">
+        <div class="events-header">
+            <h2>📋 Activity Log</h2>
+            <div class="events-controls">
+                <button id="clearEventsBtn" onclick="Events.clear()" class="btn-secondary">Clear Log</button>
+                <button id="refreshEventsBtn" onclick="Events.fetch()" class="btn-secondary">Refresh</button>
+            </div>
+        </div>
+        <div id="eventsList" class="events-list">
+            <div class="events-empty">No events yet</div>
+        </div>
+    </section>
 </div>
 
 <script src="app.js"></script>

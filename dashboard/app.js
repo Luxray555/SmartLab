@@ -83,8 +83,10 @@ function api(path, method, body, success) {
 function initApp() {
     $('auth').classList.add('hidden');
     $('app').classList.remove('hidden');
+    $('events').classList.remove('hidden');
     initSocket();
     fetchThings();
+    Events.init();
 }
 
 // Initialize WebSocket connection
@@ -332,6 +334,142 @@ const Thing = {
             }
         }
     }
+};
+
+const Events = {
+    events: [],
+
+    init() {
+        this.fetch();
+        this.initWebSocket();
+    },
+
+    initWebSocket() {
+        if (!socket) return;
+
+        // Listen for real-time event updates
+        socket.on('event:new', (event) => {
+            this.addEvent(event);
+        });
+    },
+
+    fetch() {
+        api('/analytics', 'GET', null, (data) => {
+            this.events = data;
+            this.render();
+        });
+    },
+
+    addEvent(event) {
+        this.events.unshift(event);
+        // Keep only last 100 events
+        if (this.events.length > 100) {
+            this.events = this.events.slice(0, 100);
+        }
+        this.render();
+    },
+
+    clear() {
+        if (!confirm('Clear all events from the log?')) return;
+        this.events = [];
+        this.render();
+    },
+
+    applyFilters() {
+        this.render();
+    },
+
+    getEventCategory(event) {
+        if (event.thingType === 'user') return 'user';
+        if (event.type === 'error') return 'error';
+        if (event.thingType === 'system') return 'system';
+        return 'device';
+    },
+
+    formatEventDescription(event) {
+        const data = event.data || {};
+
+        switch (event.type) {
+            case 'login':
+                return `User <strong>${data.username || 'unknown'}</strong> logged in`;
+            case 'logout':
+                return `User logged out`;
+            case 'connect':
+                return `User <strong>${data.username || 'unknown'}</strong> connected`;
+            case 'disconnect':
+                return `User <strong>${data.username || 'unknown'}</strong> disconnected`;
+            case 'action':
+                return `User <strong>${data.username || 'unknown'}</strong> triggered <strong>${data.action}</strong> on device <strong>${data.thingId}</strong>`;
+            case 'propertyChanged':
+                return `Property <strong>${data.key}</strong> changed to <strong>${data.value}</strong>`;
+            case 'motion':
+                return `Motion detected`;
+            case 'turnOn':
+                return `Device turned on`;
+            case 'turnOff':
+                return `Device turned off`;
+            default:
+                return `Event: <strong>${event.type}</strong>`;
+        }
+    },
+
+    formatTime(timestamp) {
+        const date = new Date(timestamp);
+        const now = new Date();
+        const diff = now - date;
+
+        // Less than 1 minute
+        if (diff < 60000) return 'just now';
+        // Less than 1 hour
+        if (diff < 3600000) {
+            const mins = Math.floor(diff / 60000);
+            return `${mins} min${mins > 1 ? 's' : ''} ago`;
+        }
+        // Less than 24 hours
+        if (diff < 86400000) {
+            const hours = Math.floor(diff / 3600000);
+            return `${hours} hour${hours > 1 ? 's' : ''} ago`;
+        }
+
+        // Format as date/time
+        return date.toLocaleString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    },
+
+    render() {
+        const listEl = $('eventsList');
+        if (!listEl) return;
+
+        if (this.events.length === 0) {
+            listEl.innerHTML = '<div class="events-empty">No events available</div>';
+            return;
+        }
+
+        listEl.innerHTML = this.events.map(event => {
+            const category = this.getEventCategory(event);
+            const dataJson = event.data && Object.keys(event.data).length > 0
+                ? JSON.stringify(event.data, null, 2)
+                : null;
+
+            return `
+            <div class="event-item event-${category}">
+                <div class="event-header">
+                    <span class="event-type">${category}</span>
+                    <span class="event-time">${this.formatTime(event.timestamp)}</span>
+                </div>
+                <div class="event-description">
+                    ${this.formatEventDescription(event)}
+                </div>
+                ${dataJson ? `<div class="event-data">${dataJson}</div>` : ''}
+            </div>
+        `;
+        }).join('');
+    }
+
 };
 
 // Update thing display when properties change
